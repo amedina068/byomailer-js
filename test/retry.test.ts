@@ -58,6 +58,16 @@ describe("retries of an idempotent request", () => {
 		expect(fetch).toHaveBeenCalledTimes(3);
 	});
 
+	it("retries contacts.subscribe, because a repeat does not change the contact", async () => {
+		const contact = { data: { id: 42, extra_attributes: {} } };
+		const fetch = mockFetch(json(503, {}), json(200, contact));
+
+		expect(await settle(client(fetch).contacts.subscribe(42))).toEqual(
+			contact.data,
+		);
+		expect(fetch).toHaveBeenCalledTimes(2);
+	});
+
 	it("retries a reset connection", async () => {
 		const fetch = mockFetch(connectionReset(), json(200, TAGS));
 

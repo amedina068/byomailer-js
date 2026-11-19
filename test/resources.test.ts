@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
-import type { Byomailer } from "../src/index";
+import { describe, expect, expectTypeOf, it } from "vitest";
+import {
+	type Byomailer,
+	type Sequence,
+	type SequenceSummary,
+	ValidationError,
+} from "../src/index";
 import {
 	API,
 	callOf,
@@ -95,6 +100,14 @@ const cases: Case[] = [
 		reply: data(CONTACT),
 		method: "POST",
 		path: "/contacts/42/unsubscribe",
+		result: CONTACT,
+	},
+	{
+		name: "contacts.subscribe",
+		call: (m) => m.contacts.subscribe(42),
+		reply: data(CONTACT),
+		method: "POST",
+		path: "/contacts/42/subscribe",
 		result: CONTACT,
 	},
 	{
@@ -746,5 +759,97 @@ describe("sequences.exportStepMails", () => {
 			"/sequences/3/steps/11/contact-mails/export?status=sent&sort=sent_at&direction=desc",
 		);
 		expect(call.headers.get("accept")).toBe("application/json, text/csv");
+	});
+
+	it("has no `current_only` parameter, because the server ignores it", () => {
+		expectTypeOf<
+			NonNullable<Parameters<Byomailer["sequences"]["exportStepMails"]>[2]>
+		>().not.toHaveProperty("current_only");
+	});
+});
+
+describe("contacts.subscribe", () => {
+	it("gives the `contact` field error when the contact unsubscribed through a link", async () => {
+		const fetch = mockFetch(
+			json(422, {
+				message:
+					"The contact unsubscribed through an email link. Only the contact can subscribe again.",
+				errors: {
+					contact: [
+						"The contact unsubscribed through an email link. Only the contact can subscribe again.",
+					],
+				},
+			}),
+		);
+
+		const error = await client(fetch)
+			.contacts.subscribe(42)
+			.catch((error: unknown) => error);
+
+		expect(error).toBeInstanceOf(ValidationError);
+		expect((error as ValidationError).errors).toHaveProperty("contact");
+	});
+
+	it("gives the `email` field error when the address is blacklisted", async () => {
+		const fetch = mockFetch(
+			json(422, {
+				message: "This email address has been blacklisted.",
+				errors: { email: ["This email address has been blacklisted."] },
+			}),
+		);
+
+		const error = await client(fetch)
+			.contacts.subscribe(42)
+			.catch((error: unknown) => error);
+
+		expect(error).toBeInstanceOf(ValidationError);
+		expect((error as ValidationError).errors).toEqual({
+			email: ["This email address has been blacklisted."],
+		});
+	});
+});
+
+describe("sequences", () => {
+	const SUMMARY = {
+		id: 3,
+		name: "Welcome",
+		status: "live",
+		steps_count: 2,
+		contacts_count: 10,
+		completed_count: 4,
+		active_count: 6,
+	};
+
+	it("lists summaries with the completed and active counts", async () => {
+		const fetch = mockFetch(page([SUMMARY]));
+
+		const [sequence] = await client(fetch).sequences.list().toArray();
+
+		expect(sequence).toEqual(SUMMARY);
+		expectTypeOf<SequenceSummary>().not.toHaveProperty("steps");
+	});
+
+	it("reads one sequence with its steps, filters and variables", async () => {
+		const SEQUENCE = {
+			...SUMMARY,
+			steps: [STEP],
+			segment_id: null,
+			filters: [FILTER],
+			content_variables: [],
+			created_at: "2026-11-18T10:00:00.000000Z",
+		};
+		const fetch = mockFetch(data(SEQUENCE));
+
+		const sequence = await client(fetch).sequences.get(3);
+
+		expect(sequence).toEqual({ ...SEQUENCE, content_variables: {} });
+		expectTypeOf(sequence).toEqualTypeOf<Sequence>();
+		expectTypeOf<Sequence["steps"]>().toBeArray();
+	});
+
+	it("types the status filter as draft, live or paused", () => {
+		expectTypeOf<
+			NonNullable<Parameters<Byomailer["sequences"]["list"]>[0]>["status"]
+		>().toEqualTypeOf<"draft" | "live" | "paused" | undefined>();
 	});
 });

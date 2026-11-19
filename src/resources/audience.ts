@@ -50,7 +50,7 @@ export interface AddedContact {
 
 const RESERVED_FIELDS = new Set(["email", "name", "tags", "remove_tags"]);
 
-/** `/contacts`: read, add, change and unsubscribe contacts. */
+/** `/contacts`: read, add, change, unsubscribe and subscribe contacts. */
 export class Contacts {
 	readonly #transport: Transport;
 
@@ -85,6 +85,11 @@ export class Contacts {
 	/**
 	 * Adds a contact to a list. If the email is already a contact, the server
 	 * updates that contact. Read `created` to know which one happened.
+	 *
+	 * If an admin or the API unsubscribed the contact, the server subscribes
+	 * the contact again. An unsubscribe through an email link stays. On an
+	 * opt-in list, the server sends the opt-in email only when the contact is
+	 * new on the list.
 	 */
 	async add(
 		listId: number,
@@ -103,7 +108,11 @@ export class Contacts {
 		return { contact: contact(body.data), created: status === 201 };
 	}
 
-	/** Changes a contact. The server merges `attributes` into the saved attributes. */
+	/**
+	 * Changes a contact. The server merges `attributes` into the saved
+	 * attributes. An update never changes the subscription. Use `subscribe()`
+	 * to subscribe a contact again.
+	 */
 	async update(
 		contactId: number,
 		params: UpdateContactParams,
@@ -130,6 +139,28 @@ export class Contacts {
 			{
 				method: "POST",
 				path: `/contacts/${segment(contactId)}/unsubscribe`,
+				idempotent: true,
+			},
+			options,
+		);
+
+		return contact(body.data);
+	}
+
+	/**
+	 * Subscribes a contact again after an admin or the API unsubscribed it. A
+	 * subscribed contact does not change. The server rejects a contact that
+	 * unsubscribed through an email link (field `contact`) and a blacklisted
+	 * address (field `email`) with a `ValidationError`.
+	 */
+	async subscribe(
+		contactId: number,
+		options: RequestOptions = {},
+	): Promise<Contact> {
+		const body = await this.#transport.request<{ data: Contact }>(
+			{
+				method: "POST",
+				path: `/contacts/${segment(contactId)}/subscribe`,
 				idempotent: true,
 			},
 			options,

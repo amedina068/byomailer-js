@@ -43,6 +43,10 @@ export interface ContactEvent extends EventBase {
 	contact: WebhookContact;
 }
 
+/**
+ * The server sent a newsletter. For an A/B newsletter, the event arrives one
+ * time, when the server picks the winner.
+ */
 export interface NewsletterSentEvent extends EventBase {
 	event: "newsletter.sent";
 	newsletter: {

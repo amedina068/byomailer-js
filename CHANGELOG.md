@@ -4,6 +4,22 @@ All notable changes to this project are in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - Unreleased
+
+The server changes of BYOMailer PRs #114 and #115.
+
+### Added
+
+- `contacts.subscribe()` subscribes a contact again after an admin or the API unsubscribed it. The SDK retries it, because a repeat does not change the contact. A contact that unsubscribed through an email link gives a `ValidationError` with the field `contact`. A blacklisted address gives the field `email`.
+
+### Changed
+
+- The docs of `contacts.update()` say that an update never changes the subscription.
+- The docs of `contacts.add()` say that it subscribes again a contact that an admin unsubscribed.
+- The docs of `contacts.add()` say that an opt-in list sends the opt-in email only to a contact that is new on the list.
+- The docs of `SequenceSummary` explain `completed_count` and `active_count`. The server now sends real values.
+- The docs of the `newsletter.sent` webhook say that an A/B newsletter sends it one time, when the server picks the winner.
+
 ## [0.1.0] - Unreleased
 
 ### Added

@@ -262,18 +262,22 @@ export interface SequenceVariables extends ContentVariables {
 
 export type SequenceStatus = "draft" | "live" | "paused";
 
-/** A sequence in a list. */
+/** A sequence in a list. It has no steps, filters or variables. */
 export interface SequenceSummary {
 	id: number;
 	name: string;
 	status: SequenceStatus;
 	steps_count: number;
+	/** The contacts in the sequence. */
 	contacts_count: number;
+	/** The contacts that finished the sequence. */
 	completed_count: number;
+	/** The contacts that did not finish the sequence: `contacts_count - completed_count`. */
 	active_count: number;
 	project_ids?: number[];
 }
 
+/** One sequence, from `sequences.get()`. */
 export interface Sequence extends SequenceSummary {
 	steps: SequenceStep[];
 	segment_id: number | null;

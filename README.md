@@ -82,12 +82,14 @@ const page = await mailer.contacts.list({
 const contact = await mailer.contacts.get(42);
 
 // Add a contact to list 3. `created` is false when the email was already a contact.
+// This subscribes again a contact that an admin unsubscribed.
 const { contact: added, created } = await mailer.contacts.add(3, {
 	email: "ana@example.com",
 	attributes: { plan: "pro" },
 });
 
 // Change a contact. The server merges `attributes` into the saved attributes.
+// An update never changes the subscription.
 await mailer.contacts.update(42, {
 	name: "Ana P.",
 	tags: ["customer"],
@@ -98,9 +100,35 @@ await mailer.contacts.update(42, {
 // Unsubscribe a contact from all email.
 await mailer.contacts.unsubscribe(42);
 
+// Subscribe a contact again after an admin or the API unsubscribed it.
+await mailer.contacts.subscribe(42);
+
 // Remove a contact from list 3. The result is the contact.
 await mailer.contacts.removeFromList(3, 42);
 ```
+
+The subscription changes only through these calls:
+
+- `unsubscribe()` unsubscribes the contact. A second call keeps the first date.
+- `subscribe()` clears an unsubscribe that an admin or the API made. A subscribed contact does not change.
+- `add()` also clears an unsubscribe that an admin or the API made.
+- `update()` never changes the subscription.
+
+An unsubscribe through an email link stays. Only the contact can subscribe again. For this contact, `subscribe()` throws a `ValidationError` with the field `contact`. For a blacklisted address, the field is `email`:
+
+```ts
+import { ValidationError } from "byomailer";
+
+try {
+	await mailer.contacts.subscribe(42);
+} catch (error) {
+	if (error instanceof ValidationError && "contact" in error.errors) {
+		// The contact unsubscribed through an email link.
+	}
+}
+```
+
+On a list with opt-in, `add()` sends the opt-in email only when the contact is new on the list. The contact gets newsletters and sequence emails from this list only after the confirmation.
 
 `attributes` is a map of custom attributes. The SDK sends each key at the top level of the request body, because the API reads each unknown field as a custom attribute. The keys `email`, `name`, `tags` and `remove_tags` are not allowed in `attributes`.
 
@@ -190,7 +218,10 @@ To stop a schedule, call `update()` with `status: "draft"`. The server can chang
 ### Sequences
 
 ```ts
+// The list items have the counts but no steps. `status` is "draft", "live" or "paused".
 const page = await mailer.sequences.list({ status: "live" });
+
+// One sequence with its steps, filters and variable defaults.
 const sequence = await mailer.sequences.get(3);
 const stats = await mailer.sequences.stats(3);
 
@@ -372,6 +403,8 @@ The algorithm:
 
 The events are `contact.subscribed`, `contact.unsubscribed`, `contact.resubscribed`, `newsletter.sent`, `sequence_step.sent`, `sequence.completed` and `webhook.test`. Each payload has `event` and `occurred_at`. The `contact` of a payload also has the custom attributes of the contact. Each delivery also has the headers `X-Byomailer-Event` and `X-Byomailer-Delivery` (a UUID). Use the delivery UUID to find a repeated delivery.
 
+For an A/B newsletter, `newsletter.sent` arrives one time, when the server picks the winner.
+
 ## Errors
 
 Each error that the SDK throws extends `ByomailerError` and has a `code`.
@@ -429,7 +462,7 @@ The SDK retries a failed call up to `maxRetries` times. The delay doubles on eac
 | Other connection error        | Yes                         | No                                       |
 | Other 4xx                     | No                          | No                                       |
 
-These calls are idempotent: each GET and each DELETE, `countRecipients()` (it only reads), `contacts.unsubscribe()`, and each call that replaces a value: `rename()`, `topics.update()`, `blocks.update()`, `webhookEndpoints.update()`, `replaceVariables()` and `replaceStepFilters()`.
+These calls are idempotent: each GET and each DELETE, `countRecipients()` (it only reads), `contacts.unsubscribe()`, `contacts.subscribe()`, and each call that replaces a value: `rename()`, `topics.update()`, `blocks.update()`, `webhookEndpoints.update()`, `replaceVariables()` and `replaceStepFilters()`.
 
 The SDK does not retry the other calls after a 5xx or a timeout, because the server can have done the work. Examples are `contacts.add()`, `newsletters.create()`, `newsletters.sendTest()` and `webhookEndpoints.rotateSecret()`.
 

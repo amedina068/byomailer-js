@@ -111,7 +111,8 @@ export class Contacts {
 	/**
 	 * Changes a contact. The server merges `attributes` into the saved
 	 * attributes. An update never changes the subscription. Use `subscribe()`
-	 * to subscribe a contact again.
+	 * to subscribe a contact again. A repeat gives the same contact, so the
+	 * SDK retries it.
 	 */
 	async update(
 		contactId: number,
@@ -123,6 +124,7 @@ export class Contacts {
 				method: "PATCH",
 				path: `/contacts/${segment(contactId)}`,
 				json: contactBody(params),
+				idempotent: true,
 			},
 			options,
 		);

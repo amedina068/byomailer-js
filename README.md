@@ -4,7 +4,7 @@ The TypeScript client for a self-hosted [BYOMailer](https://byomailer.com) insta
 
 One package runs on Node.js, Bun, Deno, Cloudflare Workers and other edge runtimes. The package has no runtime dependencies. It uses the global `fetch` and Web Crypto.
 
-> Status: 0.1.0, not released. The package is not on npm yet.
+> Status: 0.2.0, not released. The package is not on npm. Install it from GitHub.
 
 ## Contents
 
@@ -19,14 +19,19 @@ One package runs on Node.js, Bun, Deno, Cloudflare Workers and other edge runtim
 - [Cancel a call](#cancel-a-call)
 - [Framework integration](#framework-integration)
 - [Supported runtimes](#supported-runtimes)
+- [License](#license)
 
 ## Install
 
+The package is not on npm. Install it from the GitHub repository:
+
 ```sh
-npm install byomailer
+npm install github:amedina068/byomailer-js
 ```
 
-For Bun, use `bun add byomailer`. For Deno, import `npm:byomailer`.
+The `prepare` script builds `dist/` during the install. For Bun, use `bun add github:amedina068/byomailer-js`.
+
+The repository is private. Your Git client needs read access to it.
 
 ## Quick start
 
@@ -321,7 +326,7 @@ const deliveries = await mailer.webhookEndpoints.deliveries(endpoint.id);
 const { secret } = await mailer.webhookEndpoints.rotateSecret(endpoint.id);
 
 // Queue a `webhook.test` delivery. The server allows 10 calls a minute.
-const delivery = await mailer.webhookEndpoints.test(endpoint.id);
+const delivery = await mailer.webhookEndpoints.sendTest(endpoint.id);
 
 await mailer.webhookEndpoints.delete(endpoint.id);
 ```
@@ -355,25 +360,25 @@ const next = await mailer.contacts.list({
 
 ## Webhook verification
 
-BYOMailer signs each webhook delivery. `verifyWebhook()` checks the signature and the timestamp, then returns the payload.
+BYOMailer signs each webhook delivery. `verifyWebhook()` checks the signature and the timestamp, then returns the verified event.
 
 WARNING: Verify webhooks only on the server. The endpoint secret in browser code lets any person send you fake events.
 
 ```ts
 import { verifyWebhook, WebhookVerificationError } from "byomailer";
 
-const event = await verifyWebhook({
+const { payload, deliveryId } = await verifyWebhook({
 	body: rawBody, // the raw request body: a string, a Uint8Array, an ArrayBuffer or a Buffer
 	headers: request.headers, // a Headers object or a plain object
 	secret: process.env.BYOMAILER_WEBHOOK_SECRET,
 });
 
-switch (event.event) {
+switch (payload.event) {
 	case "contact.subscribed":
-		console.log(event.contact.email);
+		console.log(payload.contact.email);
 		break;
 	case "newsletter.sent":
-		console.log(event.newsletter.title);
+		console.log(payload.newsletter.title);
 		break;
 	default:
 		// A new server version can send a new event type.
@@ -383,7 +388,26 @@ switch (event.event) {
 
 Give the raw body, byte for byte. Do not parse the JSON and encode it again. The server escapes Unicode as `\uXXXX` and does not escape `/`, so a new encoding gives other bytes. Then the signature does not match.
 
-If the delivery is not valid, `verifyWebhook()` throws a `WebhookVerificationError`. Its `reason` is `signature` or `timestamp`. Answer the request with a 400.
+The verified event has these fields:
+
+| Field        | Description                                                                             |
+| ------------ | --------------------------------------------------------------------------------------- |
+| `type`       | The event type: `event` of the payload, or the `X-Byomailer-Event` header.              |
+| `payload`    | The decoded JSON body.                                                                  |
+| `timestamp`  | The Unix time in seconds when the server signed the delivery.                           |
+| `deliveryId` | The `X-Byomailer-Delivery` header (a UUID). `null` when the header is missing or empty. |
+
+Use `deliveryId` to find a repeated delivery. An older instance does not send the delivery header. Then the verification passes and `deliveryId` is `null`.
+
+If the delivery is not valid, `verifyWebhook()` throws a `WebhookVerificationError`. Answer the request with a 400. The `reason` tells why:
+
+| `reason`    | Cause                                                                          |
+| ----------- | ------------------------------------------------------------------------------ |
+| `signature` | The signature header is missing, or the signature does not match the body.     |
+| `timestamp` | The timestamp header is missing, is not a number, or is outside the tolerance. |
+| `payload`   | The signature is valid, but the body is not a JSON object.                     |
+
+The PHP, Python and Ruby SDKs give the same fields and the same reasons.
 
 | Option      | Default      | Description                                                        |
 | ----------- | ------------ | ------------------------------------------------------------------ |
@@ -395,13 +419,15 @@ If the delivery is not valid, `verifyWebhook()` throws a `WebhookVerificationErr
 
 The algorithm:
 
-1. Read the `X-Byomailer-Timestamp` header (Unix seconds) and the `X-Byomailer-Signature` header (`sha256=` and a hex digest).
-2. Make the signed payload: the timestamp, a dot (`.`) and the raw body.
-3. Calculate the HMAC-SHA256 of the signed payload with the full secret as the key.
-4. Compare the digest with the signature in constant time.
-5. Reject a timestamp that is more than 300 seconds from now.
+1. Read the `X-Byomailer-Signature` header (`sha256=` and a hex digest). If it is missing, the reason is `signature`.
+2. Read the `X-Byomailer-Timestamp` header (Unix seconds). If it is missing or is not a number, the reason is `timestamp`.
+3. Make the signed payload: the timestamp, a dot (`.`) and the raw body.
+4. Calculate the HMAC-SHA256 of the signed payload with the full secret as the key.
+5. Change the signature header to lowercase. Compare it with `sha256=` and the hex digest, in constant time.
+6. Reject a timestamp that is more than 300 seconds from now.
+7. Parse the body. If it is not a JSON object, the reason is `payload`.
 
-The events are `contact.subscribed`, `contact.unsubscribed`, `contact.resubscribed`, `newsletter.sent`, `sequence_step.sent`, `sequence.completed` and `webhook.test`. Each payload has `event` and `occurred_at`. The `contact` of a payload also has the custom attributes of the contact. Each delivery also has the headers `X-Byomailer-Event` and `X-Byomailer-Delivery` (a UUID). Use the delivery UUID to find a repeated delivery.
+The events are `contact.subscribed`, `contact.unsubscribed`, `contact.resubscribed`, `newsletter.sent`, `sequence_step.sent`, `sequence.completed` and `webhook.test`. Each payload has `event` and `occurred_at`. The `contact` of a payload also has the custom attributes of the contact.
 
 For an A/B newsletter, `newsletter.sent` arrives one time, when the server picks the winner.
 
@@ -453,18 +479,30 @@ If you abort a call with your own `AbortSignal`, the SDK throws the reason of th
 
 The SDK retries a failed call up to `maxRetries` times. The delay doubles on each attempt: 0.5, 1, 2, 4 and 8 seconds at most. Half of each delay is random (jitter). If the server sends `Retry-After`, the SDK waits that time. If `Retry-After` is more than 60 seconds, the SDK does not retry. It throws the `RateLimitError`.
 
-| Failure                       | Retry of an idempotent call | Retry of another call                    |
-| ----------------------------- | --------------------------- | ---------------------------------------- |
-| 429                           | Yes                         | Yes. The server did not do the work.     |
-| 5xx                           | Yes                         | No                                       |
-| Timeout                       | Yes                         | No                                       |
-| Connection refused, DNS error | Yes                         | Yes. The server did not get the request. |
-| Other connection error        | Yes                         | No                                       |
-| Other 4xx                     | No                          | No                                       |
+The default is 2 retries. The timeout of one attempt is 30 seconds. The PHP, Python and Ruby SDKs use the same values and the same rule.
 
-These calls are idempotent: each GET and each DELETE, `countRecipients()` (it only reads), `contacts.unsubscribe()`, `contacts.subscribe()`, and each call that replaces a value: `rename()`, `topics.update()`, `blocks.update()`, `webhookEndpoints.update()`, `replaceVariables()` and `replaceStepFilters()`.
+| Failure                                                     | Retry of an idempotent call | Retry of another call                    |
+| ----------------------------------------------------------- | --------------------------- | ---------------------------------------- |
+| 429                                                         | Yes                         | Yes. The server did not do the work.     |
+| 5xx                                                         | Yes                         | No                                       |
+| Timeout of the `timeout` option                             | Yes                         | No                                       |
+| DNS failure, refused connection, connect timeout            | Yes                         | Yes. The server did not get the request. |
+| Other connection error (for example a reset after the send) | Yes                         | No                                       |
+| Other 4xx                                                   | No                          | No                                       |
 
-The SDK does not retry the other calls after a 5xx or a timeout, because the server can have done the work. Examples are `contacts.add()`, `newsletters.create()`, `newsletters.sendTest()` and `webhookEndpoints.rotateSecret()`.
+These calls are idempotent:
+
+- Each GET and each DELETE.
+- `newsletters.countRecipients()`, because it only reads.
+- `contacts.update()`, `contacts.unsubscribe()` and `contacts.subscribe()`.
+- `lists.rename()`, `tags.rename()`, `projects.rename()`, `topics.update()`, `blocks.update()` and `webhookEndpoints.update()`.
+- `newsletters.replaceVariables()`, `sequences.replaceVariables()` and `sequences.replaceStepFilters()`.
+
+The SDK does not retry the other calls after a 5xx, a timeout or a connection error after the send, because the server can have done the work. Examples:
+
+- `contacts.add()`: a repeat changes `created` from `true` to `false`.
+- `newsletters.update()`: `status: "live"` can start the send. A repeat then gets a 422.
+- `newsletters.create()`, `newsletters.sendTest()`, `newsletters.pickWinner()`, `webhookEndpoints.rotateSecret()` and `webhookEndpoints.sendTest()`.
 
 The SDK retries a DELETE after a lost response. If the server did the first delete, the retry gets a 404. Then the SDK throws a `NotFoundError`, but the record is gone.
 
@@ -474,7 +512,7 @@ The SDK retries a DELETE after a lost response. If the server did the first dele
 | ----------------------------- | ----------------- |
 | `newsletters.countRecipients` | 30 calls a minute |
 | `newsletters.sendTest`        | 5 calls a minute  |
-| `webhookEndpoints.test`       | 10 calls a minute |
+| `webhookEndpoints.sendTest`   | 10 calls a minute |
 
 Over a limit, the server sends a 429 with `Retry-After`.
 
@@ -538,7 +576,7 @@ export async function POST(request: Request) {
 		throw error;
 	}
 
-	if (event.event === "contact.unsubscribed") {
+	if (event.type === "contact.unsubscribed") {
 		// Update your own database.
 	}
 
@@ -570,7 +608,7 @@ app.post(
 				headers: req.headers,
 				secret: process.env.BYOMAILER_WEBHOOK_SECRET!,
 			});
-			console.log(event.event);
+			console.log(event.type, event.deliveryId);
 			res.sendStatus(204);
 		} catch (error) {
 			if (error instanceof WebhookVerificationError) {
@@ -619,6 +657,10 @@ const mailer = new Byomailer({
 The package ships ESM (`dist/index.js`) and CommonJS (`dist/index.cjs`), with types for both.
 
 Node.js 20 is out of support since April 2026. The SDK still tests on it.
+
+## License
+
+MIT. Read [LICENSE](LICENSE).
 
 ## Contributing
 

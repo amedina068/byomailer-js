@@ -32,7 +32,7 @@ export interface TransportOptions {
 	fetch: FetchLike | undefined;
 }
 
-export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+export type HttpMethod = "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 export interface RequestSpec {
 	method: HttpMethod;
@@ -43,7 +43,8 @@ export interface RequestSpec {
 	json?: unknown;
 	/**
 	 * `true` when a repeat of the request has no extra effect. The default is
-	 * `true` for GET, PUT and DELETE, and `false` for POST and PATCH.
+	 * `true` for GET, HEAD, PUT and DELETE, and `false` for POST and PATCH.
+	 * Set it only for an operation in the idempotent list of the contract.
 	 */
 	idempotent?: boolean;
 	/** Read the body as text, not as JSON. */
@@ -58,6 +59,7 @@ export interface ApiResponse<T> {
 
 const IDEMPOTENT_METHODS: ReadonlySet<HttpMethod> = new Set([
 	"GET",
+	"HEAD",
 	"PUT",
 	"DELETE",
 ]);
@@ -231,8 +233,10 @@ export class Transport {
 
 /**
  * Returns the delay before the next attempt, or `undefined` when the SDK must
- * not retry. A request that is not idempotent gets a retry only when the
- * server did not do the work: a 429, or a connection that never opened.
+ * not retry. Each request gets a retry after a 429, or after a connection
+ * error before the send (DNS, refused, connect timeout), because the server
+ * did not get the request. Only an idempotent request gets a retry after a
+ * 5xx, a timeout or another connection error.
  */
 export function retryDelay(
 	failure: ByomailerError,
@@ -242,10 +246,11 @@ export function retryDelay(
 ): number | undefined {
 	const retryable =
 		failure instanceof RateLimitError ||
-		(failure instanceof ConnectionError &&
-			(idempotent || failure.beforeSend)) ||
+		(failure instanceof ConnectionError && failure.beforeSend) ||
 		(idempotent &&
-			(failure instanceof ServerError || failure instanceof TimeoutError));
+			(failure instanceof ServerError ||
+				failure instanceof ConnectionError ||
+				failure instanceof TimeoutError));
 
 	if (!retryable) {
 		return undefined;

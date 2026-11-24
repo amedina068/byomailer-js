@@ -546,8 +546,8 @@ const cases: Case[] = [
 		result: { ...ENDPOINT, secret: "whsec_new" },
 	},
 	{
-		name: "webhookEndpoints.test",
-		call: (m) => m.webhookEndpoints.test(5),
+		name: "webhookEndpoints.sendTest",
+		call: (m) => m.webhookEndpoints.sendTest(5),
 		reply: json(202, { data: { id: 1, event_type: "webhook.test" } }),
 		method: "POST",
 		path: "/webhook-endpoints/5/test",

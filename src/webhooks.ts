@@ -88,6 +88,22 @@ export type WebhookEvent =
 	| SequenceCompletedEvent
 	| WebhookTestEvent;
 
+/** A delivery that passed verification. */
+export interface VerifiedWebhook {
+	/** The event type: `event` of the payload, or the `X-Byomailer-Event` header. */
+	type: string;
+	/** The decoded JSON body. */
+	payload: WebhookEvent;
+	/** The Unix time in seconds when the server signed the delivery. */
+	timestamp: number;
+	/**
+	 * The UUID of the delivery, from the `X-Byomailer-Delivery` header. Use it
+	 * to ignore a delivery that you received before. `null` when the header is
+	 * missing, because an older instance does not send it.
+	 */
+	deliveryId: string | null;
+}
+
 /** The headers of a delivery. The `X-Byomailer-Event` header also gives the type. */
 export const WEBHOOK_HEADERS = {
 	event: "x-byomailer-event",
@@ -99,13 +115,12 @@ export const WEBHOOK_HEADERS = {
 const DEFAULT_TOLERANCE = 300;
 
 /**
- * Verifies a webhook delivery and returns its payload. Throws a
- * `WebhookVerificationError` when the signature does not match or the
- * timestamp is too old or too new. Call it only on the server: the secret
- * must stay secret.
+ * Verifies a webhook delivery and returns the verified event. Throws a
+ * `WebhookVerificationError` with the reason `signature`, `timestamp` or
+ * `payload`. Call it only on the server: the secret must stay secret.
  *
  * @example
- * const event = await verifyWebhook({
+ * const { type, payload, deliveryId } = await verifyWebhook({
  * 	body: await request.text(),
  * 	headers: request.headers,
  * 	secret: process.env.BYOMAILER_WEBHOOK_SECRET,
@@ -113,7 +128,7 @@ const DEFAULT_TOLERANCE = 300;
  */
 export async function verifyWebhook(
 	options: VerifyWebhookOptions,
-): Promise<WebhookEvent> {
+): Promise<VerifiedWebhook> {
 	const { secret, tolerance = DEFAULT_TOLERANCE, now = new Date() } = options;
 
 	if (typeof secret !== "string" || secret === "") {
@@ -162,18 +177,52 @@ export async function verifyWebhook(
 		);
 	}
 
-	return JSON.parse(new TextDecoder().decode(body));
+	const payload = parseObject(body);
+
+	if (payload === undefined) {
+		throw new WebhookVerificationError(
+			"payload",
+			"The signature is valid, but the body is not a JSON object.",
+		);
+	}
+
+	const event = payload.event;
+
+	return {
+		type:
+			typeof event === "string"
+				? event
+				: (header(options.headers, WEBHOOK_HEADERS.event) ?? ""),
+		payload: payload as unknown as WebhookEvent,
+		timestamp: Number(timestamp),
+		deliveryId: header(options.headers, WEBHOOK_HEADERS.delivery) || null,
+	};
 }
 
-// The server signs `timestamp.body` with HMAC-SHA256. `subtle.verify`
-// compares the digests in constant time.
+function parseObject(body: Uint8Array): Record<string, unknown> | undefined {
+	let value: unknown;
+
+	try {
+		value = JSON.parse(new TextDecoder().decode(body));
+	} catch {
+		return undefined;
+	}
+
+	return typeof value === "object" && value !== null && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: undefined;
+}
+
+// The server signs `timestamp.body` with HMAC-SHA256. The header can use any
+// case, the same rule as the other SDKs. `subtle.verify` compares the
+// digests in constant time.
 async function signatureMatches(
 	secret: string,
 	timestamp: string,
 	body: Uint8Array,
 	signature: string,
 ): Promise<boolean> {
-	const match = /^sha256=([0-9a-f]{64})$/i.exec(signature.trim());
+	const match = /^sha256=([0-9a-f]{64})$/.exec(signature.trim().toLowerCase());
 
 	if (match?.[1] === undefined) {
 		return false;

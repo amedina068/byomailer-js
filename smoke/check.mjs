@@ -18,7 +18,7 @@ export async function check(sdk, runtime) {
 		now: new Date(Number(TIMESTAMP) * 1000),
 	});
 
-	if (event.event !== "webhook.test") {
+	if (event.type !== "webhook.test" || event.deliveryId !== null) {
 		throw new Error(`${runtime}: the webhook vector did not verify.`);
 	}
 

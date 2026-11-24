@@ -10,17 +10,39 @@ import vectors from "./fixtures/webhook-signature-vectors.json" with {
 
 const VALID = vectors.cases.find((item) => item.valid);
 
-if (VALID === undefined) {
+if (
+	VALID === undefined ||
+	VALID.timestamp === null ||
+	VALID.signature === null
+) {
 	throw new Error("The vectors have no valid case.");
 }
 
-function headersOf(item: { timestamp: string; signature: string }) {
-	return {
+interface Vector {
+	timestamp: string | null;
+	signature: string | null;
+	delivery: string | null;
+}
+
+/** The headers of a vector. A null value leaves the header out. */
+function headersOf(item: Vector): Record<string, string> {
+	const headers: Record<string, string> = {
 		"X-Byomailer-Event": "newsletter.sent",
-		"X-Byomailer-Delivery": "0b8f2c4e-6a1d-4e3b-9c7f-1a2b3c4d5e6f",
-		"X-Byomailer-Timestamp": item.timestamp,
-		"X-Byomailer-Signature": item.signature,
 	};
+
+	if (item.delivery !== null) {
+		headers["X-Byomailer-Delivery"] = item.delivery;
+	}
+
+	if (item.timestamp !== null) {
+		headers["X-Byomailer-Timestamp"] = item.timestamp;
+	}
+
+	if (item.signature !== null) {
+		headers["X-Byomailer-Signature"] = item.signature;
+	}
+
+	return headers;
 }
 
 async function failure(
@@ -50,7 +72,14 @@ describe("signature vectors", () => {
 			});
 
 			if (item.valid) {
-				expect(await verify).toEqual(JSON.parse(item.body));
+				const payload = JSON.parse(item.body);
+
+				expect(await verify).toEqual({
+					type: payload.event,
+					payload,
+					timestamp: Number(item.timestamp),
+					deliveryId: item.delivery_id,
+				});
 				return;
 			}
 
@@ -71,14 +100,18 @@ describe("verifyWebhook", () => {
 
 	it("accepts the body as bytes, an ArrayBuffer or a Buffer", async () => {
 		const bytes = new TextEncoder().encode(VALID.body);
-		const expected = JSON.parse(VALID.body);
+		const expected = (await verifyWebhook(valid)).payload;
 
-		expect(await verifyWebhook({ ...valid, body: bytes })).toEqual(expected);
+		expect((await verifyWebhook({ ...valid, body: bytes })).payload).toEqual(
+			expected,
+		);
 		expect(
-			await verifyWebhook({ ...valid, body: bytes.buffer as ArrayBuffer }),
+			(await verifyWebhook({ ...valid, body: bytes.buffer as ArrayBuffer }))
+				.payload,
 		).toEqual(expected);
 		expect(
-			await verifyWebhook({ ...valid, body: Buffer.from(VALID.body) }),
+			(await verifyWebhook({ ...valid, body: Buffer.from(VALID.body) }))
+				.payload,
 		).toEqual(expected);
 	});
 
@@ -169,7 +202,33 @@ describe("verifyWebhook", () => {
 			now: new Date(Number(timestamp) * 1000),
 		});
 
-		expect(event.event).toBe("contact.deleted");
+		expect(event.type).toBe("contact.deleted");
+		expect(event.deliveryId).toBeNull();
+	});
+
+	it("takes the type from the event header when the payload has no event", async () => {
+		const body = '{"occurred_at":"2026-11-18T10:00:00+00:00"}';
+		const timestamp = "1763460000";
+		const signature = await sign(VALID.secret, `${timestamp}.${body}`);
+
+		const event = await verifyWebhook({
+			body,
+			headers: {
+				"x-byomailer-event": "contact.deleted",
+				"x-byomailer-timestamp": timestamp,
+				"x-byomailer-signature": signature,
+			},
+			secret: VALID.secret,
+			now: new Date(Number(timestamp) * 1000),
+		});
+
+		expect(event.type).toBe("contact.deleted");
+	});
+
+	it("gives a null delivery ID for an empty delivery header", async () => {
+		const headers = { ...valid.headers, "X-Byomailer-Delivery": "" };
+
+		expect((await verifyWebhook({ ...valid, headers })).deliveryId).toBeNull();
 	});
 
 	it("rejects a tolerance that is not a number", async () => {
@@ -185,14 +244,14 @@ describe("verifyWebhook", () => {
 	});
 
 	it("narrows the payload with a switch on event", async () => {
-		const event: WebhookEvent = await verifyWebhook(valid);
+		const { payload }: { payload: WebhookEvent } = await verifyWebhook(valid);
 
-		switch (event.event) {
+		switch (payload.event) {
 			case "webhook.test":
-				expect(event.message).toContain("test delivery");
+				expect(payload.message).toContain("test delivery");
 				break;
 			default:
-				throw new Error(`The first vector is ${event.event}.`);
+				throw new Error(`The first vector is ${payload.event}.`);
 		}
 	});
 });
@@ -212,7 +271,7 @@ describe("framework integration", () => {
 			now: new Date(VALID.now * 1000),
 		});
 
-		expect(event.event).toBe("webhook.test");
+		expect(event.type).toBe("webhook.test");
 	});
 
 	it("verifies an Express request with express.raw()", async () => {
@@ -233,7 +292,8 @@ describe("framework integration", () => {
 			now: new Date(VALID.now * 1000),
 		});
 
-		expect(event.event).toBe("webhook.test");
+		expect(event.type).toBe("webhook.test");
+		expect(event.deliveryId).toBeNull();
 	});
 });
 

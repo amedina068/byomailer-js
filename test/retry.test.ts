@@ -10,6 +10,7 @@ import {
 } from "../src/index";
 import {
 	client,
+	connectionFailure,
 	connectionRefused,
 	connectionReset,
 	json,
@@ -141,6 +142,27 @@ describe("retries of an idempotent request", () => {
 		expect(fetch).toHaveBeenCalledTimes(2);
 	});
 
+	it("retries contacts.update after a 5xx, because it is in the idempotent list", async () => {
+		const contact = { data: { id: 42, extra_attributes: {} } };
+		const fetch = mockFetch(json(503, {}), json(200, contact));
+
+		expect(
+			await settle(client(fetch).contacts.update(42, { name: "Ana" })),
+		).toEqual(contact.data);
+		expect(fetch).toHaveBeenCalledTimes(2);
+	});
+
+	it("retries contacts.unsubscribe after a timeout", async () => {
+		const contact = { data: { id: 42, extra_attributes: {} } };
+		const fetch = mockFetch(json(200, contact));
+		hangOnce(fetch);
+
+		expect(
+			await settle(client(fetch, { timeout: 1000 }).contacts.unsubscribe(42)),
+		).toEqual(contact.data);
+		expect(fetch).toHaveBeenCalledTimes(2);
+	});
+
 	it("retries countRecipients after a 5xx, because it only reads", async () => {
 		const fetch = mockFetch(json(500, {}), json(200, COUNT));
 
@@ -168,12 +190,32 @@ describe("retries of a request that is not idempotent", () => {
 		expect(fetch).toHaveBeenCalledTimes(1);
 	});
 
+	it("does not retry newsletters.update, because it can start the send", async () => {
+		const fetch = mockFetch(json(503, {}));
+
+		expect(
+			await settle(client(fetch).newsletters.update(7, { title: "News" })),
+		).toBeInstanceOf(ServerError);
+		expect(fetch).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not retry contacts.add, because a repeat changes the created flag", async () => {
+		const fetch = mockFetch(json(503, {}));
+
+		expect(
+			await settle(client(fetch).contacts.add(3, { email: "ana@example.com" })),
+		).toBeInstanceOf(ServerError);
+		expect(fetch).toHaveBeenCalledTimes(1);
+	});
+
 	it("does not retry a timeout", async () => {
 		const fetch = mockFetch();
 		hangOnce(fetch);
 
 		expect(
-			await settle(client(fetch, { timeout: 1000 }).webhookEndpoints.test(5)),
+			await settle(
+				client(fetch, { timeout: 1000 }).webhookEndpoints.sendTest(5),
+			),
 		).toBeInstanceOf(TimeoutError);
 		expect(fetch).toHaveBeenCalledTimes(1);
 	});
@@ -187,12 +229,18 @@ describe("retries of a request that is not idempotent", () => {
 		expect(fetch).toHaveBeenCalledTimes(1);
 	});
 
-	it("retries a refused connection, because the server did not get the request", async () => {
-		const fetch = mockFetch(connectionRefused(), json(201, TAG));
+	for (const [name, code] of [
+		["a DNS failure", "ENOTFOUND"],
+		["a refused connection", "ECONNREFUSED"],
+		["a connect timeout", "UND_ERR_CONNECT_TIMEOUT"],
+	] as const) {
+		it(`retries ${name}, because the server did not get the request`, async () => {
+			const fetch = mockFetch(connectionFailure(code), json(201, TAG));
 
-		expect(await settle(client(fetch).tags.create("vip"))).toEqual(TAG.data);
-		expect(fetch).toHaveBeenCalledTimes(2);
-	});
+			expect(await settle(client(fetch).tags.create("vip"))).toEqual(TAG.data);
+			expect(fetch).toHaveBeenCalledTimes(2);
+		});
+	}
 
 	it("retries a 429, because the server did not do the work", async () => {
 		const fetch = mockFetch(
@@ -295,6 +343,21 @@ describe("backoff", () => {
 		expect(retryDelay(failure, 10, true, () => 1)).toBe(8000);
 		expect(retryDelay(failure, 10, true, () => 0)).toBe(4000);
 		expect(retryDelay(failure, 0, false)).toBeUndefined();
+	});
+
+	it("retries a connection error before the send for each request", () => {
+		const before = new ConnectionError("refused", {
+			cause: { code: "ECONNREFUSED" },
+		});
+		const after = new ConnectionError("reset", {
+			cause: { code: "ECONNRESET" },
+		});
+
+		expect(before.beforeSend).toBe(true);
+		expect(retryDelay(before, 0, false, () => 0)).toBe(250);
+		expect(after.beforeSend).toBe(false);
+		expect(retryDelay(after, 0, true, () => 0)).toBe(250);
+		expect(retryDelay(after, 0, false)).toBeUndefined();
 	});
 
 	it("stops the delay when the signal aborts", async () => {

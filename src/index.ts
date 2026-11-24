@@ -68,6 +68,7 @@ export {
 	type NewsletterSentEvent,
 	type SequenceCompletedEvent,
 	type SequenceStepSentEvent,
+	type VerifiedWebhook,
 	type VerifyWebhookOptions,
 	verifyWebhook,
 	WEBHOOK_HEADERS,

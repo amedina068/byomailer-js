@@ -6,14 +6,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## [0.2.0] - Unreleased
 
-The server changes of BYOMailer PRs #114 and #115.
+The server changes of BYOMailer PRs #114 and #115, and the same behavior as the PHP, Python and Ruby SDKs.
 
 ### Added
+
+- The MIT license: a `LICENSE` file and the `license` field in `package.json`.
+- A `prepare` script that builds `dist/`. `npm install github:amedina068/byomailer-js` now installs working code.
+- The `payload` reason of `WebhookVerificationError`: the signature is valid, but the body is not a JSON object.
+- The `VerifiedWebhook` type.
 
 - `contacts.subscribe()` subscribes a contact again after an admin or the API unsubscribed it. The SDK retries it, because a repeat does not change the contact. A contact that unsubscribed through an email link gives a `ValidationError` with the field `contact`. A blacklisted address gives the field `email`.
 
 ### Changed
 
+- **Breaking:** `verifyWebhook()` returns a verified event: `{ type, payload, timestamp, deliveryId }`. Before, it returned the payload only. Read the payload from `payload`. `deliveryId` is `null` when the `X-Byomailer-Delivery` header is missing.
+- **Breaking:** `webhookEndpoints.test()` is now `webhookEndpoints.sendTest()`, the same name as in the other SDKs.
+- The SDK retries each call after a connection error before the send: a DNS failure, a refused connection or a connect timeout. The server did not get the request. A call that is not idempotent is not retried after a timeout or a reset after the send.
+- The SDK retries `contacts.update()` after a 5xx, a timeout or a connection error, because a repeat gives the same contact.
+- `verifyWebhook()` changes the signature header to lowercase before the compare. This rule is the same in the 4 SDKs.
+- The README gives the git install command, the idempotent list and a "License" section.
 - The docs of `contacts.update()` say that an update never changes the subscription.
 - The docs of `contacts.add()` say that it subscribes again a contact that an admin unsubscribed.
 - The docs of `contacts.add()` say that an opt-in list sends the opt-in email only to a contact that is new on the list.

@@ -148,7 +148,7 @@ export class WebhookEndpoints {
 	 * Queues a `webhook.test` delivery to the endpoint and returns it with the
 	 * status `pending`. The server allows 10 calls a minute.
 	 */
-	async test(
+	async sendTest(
 		endpointId: number,
 		options: RequestOptions = {},
 	): Promise<WebhookDelivery> {

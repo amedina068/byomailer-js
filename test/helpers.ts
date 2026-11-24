@@ -34,6 +34,13 @@ export function connectionRefused(): TypeError {
 	});
 }
 
+/** A `fetch` error like the one undici throws for a connection error with this code. */
+export function connectionFailure(code: string): TypeError {
+	return new TypeError("fetch failed", {
+		cause: Object.assign(new Error(code), { code }),
+	});
+}
+
 /** A `fetch` error like the one undici throws when the server resets the connection. */
 export function connectionReset(): TypeError {
 	return new TypeError("fetch failed", {

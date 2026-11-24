@@ -10,6 +10,7 @@
 		"webhooks",
 		"sdk"
 	],
+	"license": "MIT",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/amedina068/byomailer-js.git"
@@ -50,7 +51,8 @@
 		"smoke:node": "node smoke/esm.mjs && node smoke/cjs.cjs",
 		"smoke:bun": "bun smoke/esm.mjs",
 		"smoke:deno": "deno run --allow-read smoke/esm.mjs",
-		"prepublishOnly": "npm run build && npm run check:package"
+		"prepublishOnly": "npm run build && npm run check:package",
+		"prepare": "npm run build"
 	},
 	"devDependencies": {
 		"@arethetypeswrong/cli": "^0.18.5",

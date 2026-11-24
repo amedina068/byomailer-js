@@ -107,8 +107,9 @@ export class ConnectionError extends ByomailerError {
 	readonly code = "connection_error" as const;
 	override name = "ConnectionError";
 	/**
-	 * `true` when the SDK knows that the server did not receive the request,
-	 * for example when the connection was refused. Then a retry is safe.
+	 * `true` when the SDK knows that the server did not receive the request:
+	 * a DNS failure, a refused connection or a connect timeout. Then the SDK
+	 * retries each request, also a write that is not idempotent.
 	 */
 	readonly beforeSend: boolean;
 
@@ -125,7 +126,7 @@ export class TimeoutError extends ByomailerError {
 }
 
 /** The reason that a webhook delivery failed verification. */
-export type WebhookFailureReason = "signature" | "timestamp";
+export type WebhookFailureReason = "signature" | "timestamp" | "payload";
 
 /**
  * A webhook delivery failed verification. Answer the request with a 400 and
@@ -136,7 +137,9 @@ export class WebhookVerificationError extends ByomailerError {
 	override name = "WebhookVerificationError";
 	/**
 	 * `signature`: the signature header is missing or does not match the body.
-	 * `timestamp`: the timestamp header is missing or outside the tolerance.
+	 * `timestamp`: the timestamp header is missing, is not a number, or is
+	 * outside the tolerance.
+	 * `payload`: the signature is valid, but the body is not a JSON object.
 	 */
 	readonly reason: WebhookFailureReason;
 

@@ -31,8 +31,6 @@ npm install github:amedina068/byomailer-js
 
 The `prepare` script builds `dist/` during the install. For Bun, use `bun add github:amedina068/byomailer-js`.
 
-The repository is private. Your Git client needs read access to it.
-
 ## Quick start
 
 ```ts

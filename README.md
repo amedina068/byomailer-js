@@ -1,5 +1,8 @@
 # byomailer
 
+[![CI](https://github.com/amedina068/byomailer-js/actions/workflows/ci.yml/badge.svg)](https://github.com/amedina068/byomailer-js/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/amedina068/byomailer-js/badge)](https://scorecard.dev/viewer/?uri=github.com/amedina068/byomailer-js)
+
 The TypeScript client for a self-hosted [BYOMailer](https://byomailer.com) instance. BYOMailer sends newsletters and email sequences through your own Amazon SES account.
 
 One package runs on Node.js, Bun, Deno, Cloudflare Workers and other edge runtimes. The package has no runtime dependencies. It uses the global `fetch` and Web Crypto.

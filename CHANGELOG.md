@@ -4,7 +4,13 @@ All notable changes to this project are in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.0] - Unreleased
+## [Unreleased]
+
+### Changed
+
+- **Breaking:** Node.js 22.12 or later is required. Node.js 20 reached end of life in April 2026.
+
+## [0.2.0] - 2026-11-25
 
 The server changes of BYOMailer PRs #114 and #115, and the same behavior as the PHP, Python and Ruby SDKs.
 
@@ -31,7 +37,9 @@ The server changes of BYOMailer PRs #114 and #115, and the same behavior as the 
 - The docs of `SequenceSummary` explain `completed_count` and `active_count`. The server now sends real values.
 - The docs of the `newsletter.sent` webhook say that an A/B newsletter sends it one time, when the server picks the winner.
 
-## [0.1.0] - Unreleased
+## [0.1.0] - Not published
+
+Version 0.1.0 was not published. Release 0.2.0 contains these changes.
 
 ### Added
 

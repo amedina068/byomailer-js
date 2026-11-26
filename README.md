@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/amedina068/byomailer-js/actions/workflows/ci.yml/badge.svg)](https://github.com/amedina068/byomailer-js/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/amedina068/byomailer-js/badge)](https://scorecard.dev/viewer/?uri=github.com/amedina068/byomailer-js)
 
 The TypeScript client for a self-hosted [BYOMailer](https://byomailer.com) instance. BYOMailer sends newsletters and email sequences through your own Amazon SES account.
 
@@ -650,16 +651,16 @@ const mailer = new Byomailer({
 
 ## Supported runtimes
 
-| Runtime            | Version              | Test in CI                                            |
-| ------------------ | -------------------- | ----------------------------------------------------- |
-| Node.js            | 20, 22, 24 and later | Unit tests and smoke test                             |
-| Bun                | 1.x                  | Smoke test                                            |
-| Deno               | 2.x                  | Smoke test                                            |
-| Cloudflare Workers | Current              | None. The SDK uses only Web APIs that Workers supply. |
+| Runtime            | Version         | Test in CI                                            |
+| ------------------ | --------------- | ----------------------------------------------------- |
+| Node.js            | 22.12 and later | Unit tests and smoke test on Node.js 22 and 24        |
+| Bun                | 1.x             | Smoke test                                            |
+| Deno               | 2.x             | Smoke test                                            |
+| Cloudflare Workers | Current         | None. The SDK uses only Web APIs that Workers supply. |
 
 The package ships ESM (`dist/index.js`) and CommonJS (`dist/index.cjs`), with types for both.
 
-Node.js 20 is out of support since April 2026. The SDK still tests on it.
+The SDK requires Node.js 22.12 or later. Node.js 20 reached end of life in April 2026. The SDK does not support it.
 
 ## Related projects
 
